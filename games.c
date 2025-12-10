@@ -594,7 +594,19 @@ int start_tictactoe_game(Difficulty difficulty) {
     }
 }
 
-/* ========== GAME 5: УПРОЩЁННЫЙ ТЕТРИС ========== */
+/* ========== GAME 5: ТЕТРИС ========== */
+
+// координаты блоков фигур (относительные)
+// 7 классических фигур тетриса: I, O, T, L, J, S, Z
+static const int SHAPES[7][4][2] = {
+    {{0,0}, {0,1}, {0,2}, {0,3}},   // I - палка
+    {{0,0}, {0,1}, {1,0}, {1,1}},   // O - квадрат
+    {{0,1}, {1,0}, {1,1}, {1,2}},   // T - тэшка
+    {{0,0}, {1,0}, {1,1}, {1,2}},   // L
+    {{0,2}, {1,0}, {1,1}, {1,2}},   // J
+    {{0,1}, {0,2}, {1,0}, {1,1}},   // S
+    {{0,0}, {0,1}, {1,1}, {1,2}}    // Z
+};
 
 // выводим поле тетриса
 void print_tetris(char** field, int rows, int cols) {
@@ -612,6 +624,43 @@ void print_tetris(char** field, int rows, int cols) {
     printf("+");
     for (j = 0; j < cols; j++) printf("-");
     printf("+\n");
+}
+
+// проверяем, можно ли разместить фигуру
+int can_place(char** field, int rows, int cols, int shape[4][2], int row, int col) {
+    int i;
+    for (i = 0; i < 4; i++) {
+        int r = row + shape[i][0];
+        int c = col + shape[i][1];
+        if (r < 0 || r >= rows || c < 0 || c >= cols || field[r][c] != '.') {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+// поворот фигуры на 90 градусов по часовой (кроме квадрата)
+void rotate_shape(int shape[4][2], int shape_type) {
+    int i, temp;
+    if (shape_type == 1) return; // квадрат не крутится
+
+    // поворот: (r, c) -> (c, -r) относительно центра
+    for (i = 0; i < 4; i++) {
+        temp = shape[i][0];
+        shape[i][0] = shape[i][1];
+        shape[i][1] = -temp;
+    }
+
+    // нормализация - сдвигаем к 0
+    int min_r = shape[0][0], min_c = shape[0][1];
+    for (i = 1; i < 4; i++) {
+        if (shape[i][0] < min_r) min_r = shape[i][0];
+        if (shape[i][1] < min_c) min_c = shape[i][1];
+    }
+    for (i = 0; i < 4; i++) {
+        shape[i][0] -= min_r;
+        shape[i][1] -= min_c;
+    }
 }
 
 // удаляем заполненные линии и возвращаем количество
@@ -642,14 +691,14 @@ int remove_lines(char** field, int rows, int cols) {
 }
 
 int start_tetris_game(Difficulty difficulty) {
-    int rows = 12, cols = 8;
+    int rows = 16, cols = 10;
     int goal, cleared = 0;
     char** field;
     char input;
-    int i, j, row, col;
+    int i, j;
 
     // цель по сложности
-    goal = (difficulty == DIFF_EASY) ? 3 : (difficulty == DIFF_MEDIUM) ? 5 : 8;
+    goal = (difficulty == DIFF_EASY) ? 5 : (difficulty == DIFF_MEDIUM) ? 10 : 15;
 
     // создаём пустое поле
     field = create_field(rows, cols);
@@ -661,18 +710,24 @@ int start_tetris_game(Difficulty difficulty) {
 
     printf("\n========== ТЕТРИС ==========\n");
     printf("Цель: собрать %d линий\n", goal);
-    printf("Управление: A - влево, D - вправо, S - вниз, Q - выход\n");
+    printf("Управление: A - влево, D - вправо, S - вниз, W - поворот, Q - выход\n");
     printf("Нажмите Enter...");
     getchar();
 
     // игровой цикл
     while (cleared < goal) {
-        // новая фигура - вертикальная палка из 3 блоков
-        row = 0;
-        col = cols / 2;
+        // выбираем случайную фигуру
+        int shape_type = rand() % 7;
+        int shape[4][2];
+        for (i = 0; i < 4; i++) {
+            shape[i][0] = SHAPES[shape_type][i][0];
+            shape[i][1] = SHAPES[shape_type][i][1];
+        }
+
+        int row = 0, col = cols / 2 - 2;
 
         // проверяем, можно ли разместить
-        if (field[0][col] != '.' || field[1][col] != '.' || field[2][col] != '.') {
+        if (!can_place(field, rows, cols, shape, row, col)) {
             break; // игра окончена
         }
 
@@ -682,16 +737,17 @@ int start_tetris_game(Difficulty difficulty) {
             printf("\n========== ТЕТРИС ==========\n");
             printf("Линий: %d/%d\n", cleared, goal);
 
-            // рисуем фигуру
-            field[row][col] = '#';
-            field[row + 1][col] = '#';
-            field[row + 2][col] = '#';
+            // рисуем фигуру на поле
+            for (i = 0; i < 4; i++) {
+                field[row + shape[i][0]][col + shape[i][1]] = '#';
+            }
             print_tetris(field, rows, cols);
-            field[row][col] = '.';
-            field[row + 1][col] = '.';
-            field[row + 2][col] = '.';
+            // убираем фигуру с поля
+            for (i = 0; i < 4; i++) {
+                field[row + shape[i][0]][col + shape[i][1]] = '.';
+            }
 
-            printf("\nКоманда: ");
+            printf("\nКоманда (A-влево, D-вправо, S-вниз, W-поворот, Q-выход): ");
             scanf(" %c", &input);
             while (getchar() != '\n');
 
@@ -700,23 +756,38 @@ int start_tetris_game(Difficulty difficulty) {
                 return 0;
             }
 
-            // двигаем влево/вправо
-            if ((input == 'A' || input == 'a') && col > 0 &&
-                field[row][col - 1] == '.' && field[row + 1][col - 1] == '.' && field[row + 2][col - 1] == '.') {
+            // движение влево
+            if ((input == 'A' || input == 'a') && can_place(field, rows, cols, shape, row, col - 1)) {
                 col--;
-            } else if ((input == 'D' || input == 'd') && col < cols - 1 &&
-                       field[row][col + 1] == '.' && field[row + 1][col + 1] == '.' && field[row + 2][col + 1] == '.') {
+            }
+            // движение вправо
+            else if ((input == 'D' || input == 'd') && can_place(field, rows, cols, shape, row, col + 1)) {
                 col++;
             }
+            // поворот
+            else if (input == 'W' || input == 'w') {
+                int temp_shape[4][2];
+                for (i = 0; i < 4; i++) {
+                    temp_shape[i][0] = shape[i][0];
+                    temp_shape[i][1] = shape[i][1];
+                }
+                rotate_shape(temp_shape, shape_type);
+                if (can_place(field, rows, cols, temp_shape, row, col)) {
+                    for (i = 0; i < 4; i++) {
+                        shape[i][0] = temp_shape[i][0];
+                        shape[i][1] = temp_shape[i][1];
+                    }
+                }
+            }
 
-            // падение вниз
-            if (row + 3 < rows && field[row + 3][col] == '.') {
+            // автоматическое падение или ручное ускорение
+            if (can_place(field, rows, cols, shape, row + 1, col)) {
                 row++;
             } else {
                 // фиксируем фигуру
-                field[row][col] = '#';
-                field[row + 1][col] = '#';
-                field[row + 2][col] = '#';
+                for (i = 0; i < 4; i++) {
+                    field[row + shape[i][0]][col + shape[i][1]] = '#';
+                }
                 cleared += remove_lines(field, rows, cols);
                 break;
             }
